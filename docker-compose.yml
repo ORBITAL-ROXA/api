@@ -1,0 +1,90 @@
+version: "3.7"
+
+services:
+  redis:
+    image: redis:6
+    command: redis-server --requirepass super_secure_password_change_me
+    container_name: redis
+    networks:
+      - get5
+    restart: always
+
+  get5db:
+    image: yobasystems/alpine-mariadb
+    container_name: get5db
+    restart: always
+    networks:
+      - get5
+    environment:
+      - MYSQL_ROOT_PASSWORD=
+      - MYSQL_DATABASE=get5
+      - MYSQL_USER=get5
+      - MYSQL_PASSWORD=
+      - MYSQL_CHARSET=utf8mb4
+      - MYSQL_COLLATION=utf8mb4_general_ci
+
+  caddy:
+    image: lucaslorentz/caddy-docker-proxy:ci-alpine
+    container_name: caddy-reverse-proxy
+    restart: unless-stopped
+    networks:
+      - get5
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - 80:80
+      - 443:443
+    environment:
+      - CADDY_INGRESS_NETWORKS=get5
+
+  g5api:
+    image: ghcr.io/phlexplexico/g5api:latest
+    depends_on:
+      - get5db
+    container_name: G5API
+    networks:
+      - get5
+    labels:
+      caddy: localhost
+      caddy.handle_path: /api/*
+      caddy.handle_path.0_reverse_proxy: "{{upstreams 3301}}"
+    volumes:
+      - ./public:/Get5API/public
+    environment:
+      - NODE_ENV=production
+      - PORT=3301
+      - DBKEY=
+      - STEAMAPIKEY=
+      - HOSTNAME=https://localhost
+      - SHAREDSECRET=
+      - CLIENTHOME=https://localhost
+      - APIURL=https://localhost/api
+      - SQLUSER=get5
+      - SQLPASSWORD=
+      - SQLPORT=3306
+      - DATABASE=get5
+      - SQLHOST=get5db
+      - ADMINS=
+      - SUPERADMINS=
+      - REDISURL=redis://:super_secure_password_change_me@redis:6379
+      - REDISTTL=86400
+      - USEREDIS=true
+      - UPLOADDEMOS=true
+      - LOCALLOGINS=false
+    restart: always
+
+  g5v:
+    image: ghcr.io/phlexplexico/g5v:latest
+    depends_on:
+      - g5api
+    container_name: G5V-Front-End
+    networks:
+      - get5
+    restart: always
+    labels:
+      caddy: localhost
+      caddy.reverse_proxy: "{{upstreams}}"
+
+networks:
+  get5:
+    external: true

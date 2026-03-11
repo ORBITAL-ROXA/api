@@ -1,0 +1,34 @@
+{
+  "server": {
+    "port": 3301,
+    "hostname": "http://localhost",
+    "dbKey": "Database 16 Byte Key.",
+    "steamAPIKey": "API Key For Steam Calls.",
+    "sharedSecret": "a secure secret for session sigining.",
+    "clientHome": "http://localhost:8080",
+    "useRedis": false,
+    "apiURL": "http://localhost:8080/api/",
+    "uploadDemos": false,
+    "localLoginEnabled": true,
+    "redisUrl": "redis://:super_secure@localhost:6379",
+    "redisTTL": 86400
+  },
+  "test": {
+    "driver": "mysql",
+    "user": "get5_user",
+    "password": "",
+    "database": "get5test",
+    "multipleStatements": true,
+    "flags": { "ENV": "MYSQL_FLAGS" },
+    "host": "127.0.0.1",
+    "port": 3306,
+    "connectionLimit": 15
+  },
+  "admins": {
+    "steam_ids": "admins,go,here"
+  },
+  "super_admins": {
+    "steam_ids": "super_admins,go,here"
+  }
+}
+  
