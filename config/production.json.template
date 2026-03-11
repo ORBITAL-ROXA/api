@@ -1,0 +1,33 @@
+{
+  "server": {
+    "port": $PORT,
+    "hostname": "$HOSTNAME",
+    "dbKey": "$DBKEY",
+    "steamAPIKey": "$STEAMAPIKEY",
+    "sharedSecret": "$SHAREDSECRET",
+    "clientHome": "$CLIENTHOME",
+    "useRedis": $USEREDIS,
+    "apiURL": "$APIURL",
+    "uploadDemos": $UPLOADDEMOS,
+    "localLoginEnabled": $LOCALLOGINS,
+    "redisUrl": "$REDISURL",
+    "redisTTL": $REDISTTL
+  },
+  "production": {
+    "driver": "mysql",
+    "user": "$SQLUSER",
+    "password": "$SQLPASSWORD",
+    "database": "$DATABASE",
+    "multipleStatements": true,
+    "flags": { "ENV": "MYSQL_FLAGS" },
+    "host": "$SQLHOST",
+    "port": $SQLPORT,
+    "connectionLimit": 15
+  },
+  "admins": {
+    "steam_ids": "$ADMINS"
+  },
+  "super_admins": {
+    "steam_ids": "$SUPERADMINS"
+  }
+}
