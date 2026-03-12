@@ -13,7 +13,7 @@ import config from "config";
 const router: Router = Router();
 
 // API key for worker authentication
-const HIGHLIGHTS_API_KEY = process.env.HIGHLIGHTS_API_KEY || "orbital-highlights-key-change-me";
+const HIGHLIGHTS_API_KEY = process.env.HIGHLIGHTS_API_KEY || "";
 
 // Ensure highlights directory exists
 if (!existsSync("public/highlights")) {
