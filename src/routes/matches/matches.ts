@@ -1458,7 +1458,7 @@ router.put("/", Utils.ensureAuthenticated, async (req, res, next) => {
       };
       // Remove any values that may not be updated.
       updateStmt = await db.buildUpdateStatement(updateStmt) as MatchData;
-      if (!Object.keys(updateStmt)) {
+      if (Object.keys(updateStmt).length === 0) {
         res.status(412).json({ message: "No update data has been provided." });
         return;
       }

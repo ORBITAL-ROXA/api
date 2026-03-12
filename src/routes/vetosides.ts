@@ -346,7 +346,7 @@ router.put("/", Utils.ensureAuthenticated, async (req, res, next) => {
         side: req.body[0].side,
       };
       updateStmt = await db.buildUpdateStatement(updateStmt) as VetoSideObject;
-      if (!Object.keys(updateStmt)) {
+      if (Object.keys(updateStmt).length === 0) {
         res
           .status(412)
           .json({ message: "No update data has been provided." });

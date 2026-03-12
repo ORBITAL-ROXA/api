@@ -76,6 +76,8 @@ class MapFlowService {
           "UPDATE map_stats SET ? WHERE match_id = ? AND map_number = ?";
         insUpdStatement = await db.buildUpdateStatement(insUpdStatement);
         await db.query(sqlString, [insUpdStatement, event.matchid, event.map_number]);
+        GlobalEmitter.emit("mapStatUpdate");
+        return res.status(200).send({ message: "Success" });
       } else {
         insUpdStatement = {
           match_id: event.matchid,
@@ -384,7 +386,7 @@ class MapFlowService {
     pauseInfo = await db.query(sqlString, [event.matchid]);
 
     if (event.team == "team1") teamPaused = matchInfo[0].team1_string;
-    else if (event.team == "team2") teamPaused = matchInfo[0].team1_string;
+    else if (event.team == "team2") teamPaused = matchInfo[0].team2_string;
     else teamPaused = "Admin";
 
     if (pauseInfo.length) {

@@ -349,7 +349,7 @@ router.put("/", Utils.ensureAuthenticated, async (req, res, next) => {
         pick_or_veto: req.body[0].pick_or_ban,
       };
       updateStmt = await db.buildUpdateStatement(updateStmt) as VetoObject;
-      if (!Object.keys(updateStmt)) {
+      if (Object.keys(updateStmt).length === 0) {
         res
           .status(412)
           .json({ message: "No update data has been provided." });
