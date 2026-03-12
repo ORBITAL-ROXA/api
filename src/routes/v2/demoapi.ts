@@ -164,6 +164,21 @@ router.post("/", async (req: Request, res: Response) => {
     sqlString = "UPDATE map_stats SET ? WHERE id = ?";
     await db.query(sqlString, [updateStmt, mapInfo[0].id]);
     GlobalEmitter.emit("demoUpdate");
+
+    // Auto-create pending highlight clips for this map
+    try {
+      await db.query(
+        "CREATE TABLE IF NOT EXISTS highlight_clips (id INT AUTO_INCREMENT PRIMARY KEY, match_id INT NOT NULL, map_number INT NOT NULL DEFAULT 0, `rank` INT NOT NULL DEFAULT 1, player_name VARCHAR(64), steam_id VARCHAR(64), kills_count INT DEFAULT 0, score INT DEFAULT 0, description TEXT, round_number INT, tick_start INT, tick_end INT, video_file VARCHAR(512), thumbnail_file VARCHAR(512), duration_s FLOAT, status ENUM('pending','extracting','recording','processing','ready','error') DEFAULT 'pending', error_message TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, INDEX idx_match (match_id, map_number), INDEX idx_status (status))"
+      );
+      await db.query(
+        "INSERT IGNORE INTO highlight_clips (match_id, map_number, `rank`, status) VALUES (?, ?, 1, 'pending'), (?, ?, 2, 'pending'), (?, ?, 3, 'pending')",
+        [matchId, mapNumber, matchId, mapNumber, matchId, mapNumber]
+      );
+      console.log(`[HIGHLIGHTS] Created 3 pending clips for match ${matchId} map ${mapNumber}`);
+    } catch (hlErr) {
+      console.error("[HIGHLIGHTS] Error creating pending clips:", hlErr);
+    }
+
     res.status(200).send({message: "Success"});
     return;
   } catch (error) {

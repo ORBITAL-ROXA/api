@@ -34,6 +34,7 @@ import passport from "./src/utility/auth.js";
 import {router as v2Router} from "./src/routes/v2/api.js";
 import {router as v2DemoRouter} from "./src/routes/v2/demoapi.js";
 import { router as v2BackupRouter } from "./src/routes/v2/backupapi.js";
+import highlightsRouter from "./src/routes/highlights.js";
 // End Route Files
 
 
@@ -150,6 +151,8 @@ app.use("/maps", mapListRouter);
 app.use("/v2", v2Router);
 app.use("/v2/demo", v2DemoRouter);
 app.use("/v2/backup", v2BackupRouter);
+app.use("/highlights", highlightsRouter);
+app.use("/highlights-files", express.static("public/highlights"));
 // END ROUTES
 
 // Steam API Calls.
