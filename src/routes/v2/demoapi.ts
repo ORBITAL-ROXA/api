@@ -106,9 +106,9 @@ router.post("/", async (req: Request, res: Response) => {
   }
   try {
     const apiKey: string | undefined = req.get("Authorization");
-    const matchId: string | undefined = req.get("Get5-MatchId");
-    const mapNumber: string | undefined = req.get("Get5-MapNumber");
-    const demoFilename: string | undefined = req.get("Get5-FileName");
+    const matchId: string | undefined = req.get("Get5-MatchId") || req.get("MatchZy-MatchId");
+    const mapNumber: string | undefined = req.get("Get5-MapNumber") || req.get("MatchZy-MapNumber");
+    const demoFilename: string | undefined = req.get("Get5-FileName") || req.get("MatchZy-FileName");
     // Check that the values have made it across.
     if (!apiKey || !matchId || !mapNumber || !demoFilename) {
       return res
