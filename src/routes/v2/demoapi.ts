@@ -110,17 +110,24 @@ router.post("/", async (req: Request, res: Response) => {
     const mapNumber: string | undefined = req.get("Get5-MapNumber") || req.get("MatchZy-MapNumber");
     const demoFilename: string | undefined = req.get("Get5-FileName") || req.get("MatchZy-FileName");
     // Check that the values have made it across.
-    if (!apiKey || !matchId || !mapNumber || !demoFilename) {
+    if (!matchId || !mapNumber || !demoFilename) {
       return res
         .status(401)
-        .send({ message: "API key, Match ID, or Map Number not provided." });
+        .send({ message: "Match ID, Map Number, or FileName not provided." });
     }
-    // Check if our API key is correct.
-    const matchApiCheck: number = await Utils.checkApiKey(apiKey, matchId);
-    if (matchApiCheck == 1) {
-      return res.status(401).send({
-        message: "Invalid API key has been given."
-      });
+    // Check if our API key is correct (skip if highlights key provided for manual uploads).
+    const highlightsKey = req.get("X-Highlights-Key");
+    const isManualUpload = highlightsKey === (config.has("server.highlightsApiKey") ? config.get("server.highlightsApiKey") : process.env.HIGHLIGHTS_API_KEY);
+    if (!isManualUpload) {
+      if (!apiKey) {
+        return res.status(401).send({ message: "API key not provided." });
+      }
+      const matchApiCheck: number = await Utils.checkApiKey(apiKey, matchId);
+      if (matchApiCheck == 1) {
+        return res.status(401).send({
+          message: "Invalid API key has been given."
+        });
+      }
     }
     // Begin file compression into public/demos and check time variance of 8 minutes.
     let zip: JSZip = new JSZip();
