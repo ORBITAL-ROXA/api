@@ -216,6 +216,31 @@ router.post("/upload", checkApiKey, async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /highlights/all
+ * Returns all ready highlight clips, newest first.
+ * Query params: ?limit=30&offset=0
+ */
+router.get("/all", async (req: Request, res: Response) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit as string) || 30, 100);
+    const offset = parseInt(req.query.offset as string) || 0;
+    const sql = `
+      SELECT hc.*, m.team1_string, m.team2_string
+      FROM highlight_clips hc
+      LEFT JOIN \`match\` m ON m.id = hc.match_id
+      WHERE hc.status = 'ready' AND hc.video_file IS NOT NULL
+      ORDER BY hc.created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+    const result: RowDataPacket[] = await db.query(sql, [limit, offset]);
+    res.json({ clips: result });
+  } catch (error) {
+    console.error("[HIGHLIGHTS] Error fetching all clips:", error);
+    res.status(500).json({ message: "Error fetching clips" });
+  }
+});
+
+/**
  * GET /highlights/player/:steamId
  * Returns all ready highlight clips for a specific player.
  */
