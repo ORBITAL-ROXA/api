@@ -45,7 +45,8 @@ async function ensureTable() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_match (match_id, map_number),
-        INDEX idx_status (status)
+        INDEX idx_status (status),
+        INDEX idx_steam_id (steam_id)
       )
     `);
   } catch (err) {
@@ -211,6 +212,29 @@ router.post("/upload", checkApiKey, async (req: Request, res: Response) => {
   } catch (error) {
     console.error("[HIGHLIGHTS] Error uploading:", error);
     res.status(500).json({ message: "Error uploading clip" });
+  }
+});
+
+/**
+ * GET /highlights/player/:steamId
+ * Returns all ready highlight clips for a specific player.
+ */
+router.get("/player/:steamId", async (req: Request, res: Response) => {
+  try {
+    const steamId = req.params.steamId;
+    const sql = `
+      SELECT hc.*, m.team1_string, m.team2_string
+      FROM highlight_clips hc
+      LEFT JOIN \`match\` m ON m.id = hc.match_id
+      WHERE hc.steam_id = ? AND hc.status = 'ready' AND hc.video_file IS NOT NULL
+      ORDER BY hc.created_at DESC
+      LIMIT 20
+    `;
+    const result: RowDataPacket[] = await db.query(sql, [steamId]);
+    res.json({ clips: result });
+  } catch (error) {
+    console.error("[HIGHLIGHTS] Error fetching player clips:", error);
+    res.status(500).json({ message: "Error fetching player clips" });
   }
 });
 
