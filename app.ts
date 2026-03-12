@@ -152,7 +152,11 @@ app.use("/v2", v2Router);
 app.use("/v2/demo", v2DemoRouter);
 app.use("/v2/backup", v2BackupRouter);
 app.use("/highlights", highlightsRouter);
-app.use("/highlights-files", express.static("public/highlights"));
+app.use("/highlights-files", (req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+  next();
+}, express.static("public/highlights"));
 // END ROUTES
 
 // Steam API Calls.
