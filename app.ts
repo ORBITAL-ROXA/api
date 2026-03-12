@@ -155,6 +155,7 @@ app.use("/highlights", highlightsRouter);
 app.use("/highlights-files", (req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
   next();
 }, express.static("public/highlights"));
 // END ROUTES
