@@ -324,89 +324,52 @@ import { Player } from "../types/leaderboard/Player.js";
   * @inner */
  const getTeamLeaderboard = async (seasonId: number | null = null) => {
    try {
-     /* Logic:
-      * 1. Get all matches.
-      * 2. Loops through each match id, and get all map stats.
-      * 3. Store all map stats for each unique team.
-      * 4. Return all stats. Doesn't matter if sorted, front-end should take care of it?
-      */
-     let allMatches = null;
-     let winningRounds,
-       losingRounds = 0;
-     let teamStandings: Array<TeamStanding> = [];
-     let matchSql = "";
-     if (!seasonId) {
-       matchSql =
-         "SELECT id, team1_id, team2_id FROM `match` WHERE end_time IS NOT NULL AND winner IS NOT NULL AND cancelled = false";
-       allMatches = await db.query(matchSql);
-     } else {
-       matchSql =
-         "SELECT id, team1_id, team2_id FROM `match` WHERE end_time IS NOT NULL AND winner IS NOT NULL AND cancelled = FALSE AND season_id = ?";
-       allMatches = await db.query(matchSql, [seasonId]);
+     // Single query with JOINs instead of N+1 queries per match/map
+     let sql = `
+       SELECT
+         tw.name AS winner_name,
+         tl.name AS loser_name,
+         CASE WHEN ms.winner = m.team1_id THEN ms.team1_score ELSE ms.team2_score END AS winner_rounds,
+         CASE WHEN ms.winner = m.team1_id THEN ms.team2_score ELSE ms.team1_score END AS loser_rounds
+       FROM map_stats ms
+       JOIN \`match\` m ON m.id = ms.match_id
+       JOIN team tw ON tw.id = ms.winner
+       JOIN team tl ON tl.id = CASE WHEN ms.winner = m.team1_id THEN m.team2_id ELSE m.team1_id END
+       WHERE m.end_time IS NOT NULL
+         AND m.winner IS NOT NULL
+         AND m.cancelled = 0
+         AND ms.winner IS NOT NULL
+     `;
+     const params: any[] = [];
+     if (seasonId) {
+       sql += " AND m.season_id = ?";
+       params.push(seasonId);
      }
-     for (let match of allMatches) {
-       let mapStatSql =
-         "SELECT * FROM map_stats WHERE match_id = ? AND winner IS NOT NULL";
-       let teamSelectSql = "SELECT id, name FROM team WHERE id = ?";
-       let winningTeam, losingTeam;
-       const mapStats = await db.query(mapStatSql, match.id);
-       for (let stats of mapStats) {
-         winningRounds = 0;
-         losingRounds = 0;
-         winningTeam = await db.query(teamSelectSql, [stats.winner]);
-         // If we don't have a team don't report to the team table.
-         // This means that it was a PUG and not an actual team.
-         if (winningTeam[0] == null) {
-           continue;
-         }
-         if (winningTeam[0].id === match.team1_id) {
-           losingTeam = await db.query(teamSelectSql, [match.team2_id]);
-         } else {
-           losingTeam = await db.query(teamSelectSql, [match.team1_id]);
-         }
-         // If winners or losers are deleted, continue on.
-         if (losingTeam[0] == null) {
-           continue;
-         }
-         if (winningTeam[0].id === match.team1_id) {
-           winningRounds += stats.team1_score;
-           losingRounds += stats.team2_score;
-         } else {
-           winningRounds += stats.team2_score;
-           losingRounds += stats.team1_score;
-         }
-         let winName = winningTeam[0].name;
-         let loseName = losingTeam[0].name;
-         // Instantiate the object, needed only once.
-         if (!teamStandings.some((el) => el.name === winName)) {
-           teamStandings.push({
-             name: winName,
-             wins: 0,
-             losses: 0,
-             rounddiff: 0,
-           });
-         }
-         if (!teamStandings.some((el) => el.name === loseName)) {
-           teamStandings.push({
-             name: loseName,
-             wins: 0,
-             losses: 0,
-             rounddiff: 0,
-           });
-         }
-         let winners: TeamStanding | undefined = teamStandings.find((team) => {
-           return team.name === winName;
-         });
-         winners!.wins += 1;
-         winners!.rounddiff += winningRounds - losingRounds;
-         let losers: TeamStanding | undefined = teamStandings.find((team) => {
-           return team.name === loseName;
-         });
-         losers!.losses += 1;
-         losers!.rounddiff += losingRounds - winningRounds;
+
+     const rows = await db.query(sql, params);
+     const teamMap = new Map<string, TeamStanding>();
+
+     for (const row of rows) {
+       const roundDiff = row.winner_rounds - row.loser_rounds;
+
+       // Winner
+       if (!teamMap.has(row.winner_name)) {
+         teamMap.set(row.winner_name, { name: row.winner_name, wins: 0, losses: 0, rounddiff: 0 });
        }
+       const winner = teamMap.get(row.winner_name)!;
+       winner.wins += 1;
+       winner.rounddiff += roundDiff;
+
+       // Loser
+       if (!teamMap.has(row.loser_name)) {
+         teamMap.set(row.loser_name, { name: row.loser_name, wins: 0, losses: 0, rounddiff: 0 });
+       }
+       const loser = teamMap.get(row.loser_name)!;
+       loser.losses += 1;
+       loser.rounddiff -= roundDiff;
      }
-     return teamStandings;
+
+     return Array.from(teamMap.values());
    } catch (err) {
      console.log(err);
      throw err;
@@ -419,180 +382,106 @@ import { Player } from "../types/leaderboard/Player.js";
   * @param {string} [seasonId=null] - Season ID to filter.
   */
  const getPlayerLeaderboard = async (seasonId: number | null = null, pug: boolean = false) => {
-   let allPlayers: Array<Player> = [];
-   let playerStats;
-   /* Logic:
-    * 1. Get all player values where match is not cancelled or forfeit.
-    * 2. Grab raw values, and calculate things like HSP and KDR for each user. Get names and cache 'em even.
-    * 3. Insert into list of objects for each user.
-    */
-   let playerStatSql =
-     `SELECT  steam_id, name, sum(kills) as kills,
-     sum(deaths) as deaths, sum(assists) as assists, sum(k1) as k1,
-     sum(k2) as k2, sum(k3) as k3,
-     sum(k4) as k4, sum(k5) as k5, sum(v1) as v1,
-     sum(v2) as v2, sum(v3) as v3, sum(v4) as v4,
-     sum(v5) as v5, sum(roundsplayed) as trp, sum(flashbang_assists) as fba,
-     sum(damage) as dmg, sum(headshot_kills) as hsk, count(id) as totalMaps,
-     sum(knife_kills) as knifekills, sum(friendlies_flashed) as fflash,
-     sum(enemies_flashed) as eflash, sum(util_damage) as utildmg
-     FROM    player_stats
-     WHERE   match_id IN (
-         SELECT  id
-         FROM    \`match\`
-         WHERE   cancelled=0
-         AND     is_pug=` +
-     pug +
-     `
-     )
-     GROUP BY steam_id, name`;
-   let playerStatSqlSeasons =
-     `SELECT  steam_id, name, sum(kills) as kills,
-     sum(deaths) as deaths, sum(assists) as assists, sum(k1) as k1,
-     sum(k2) as k2, sum(k3) as k3,
-     sum(k4) as k4, sum(k5) as k5, sum(v1) as v1,
-     sum(v2) as v2, sum(v3) as v3, sum(v4) as v4,
-     sum(v5) as v5, sum(roundsplayed) as trp, sum(flashbang_assists) as fba,
-     sum(damage) as dmg, sum(headshot_kills) as hsk, count(id) as totalMaps,
-     sum(knife_kills) as knifekills, sum(friendlies_flashed) as fflash,
-     sum(enemies_flashed) as eflash, sum(util_damage) as utildmg
-     FROM    player_stats
-     WHERE   match_id IN (
-         SELECT  id
-         FROM    \`match\`
-         WHERE   cancelled=0
-         AND season_id = ?
-         AND     is_pug=` +
-     pug +
-     `
-     )
-     GROUP BY steam_id, name`;
-   let winSql = `SELECT COUNT(*) AS wins FROM \`match\` mtch 
-     JOIN player_stats pstat ON mtch.id = pstat.match_id 
-     WHERE pstat.team_id = mtch.winner and pstat.steam_id = ?
-     AND is_pug = ?`;
-   if (pug) {
-     winSql = `SELECT COUNT(*) AS wins FROM \`match\` mtch 
-     JOIN player_stats pstat ON mtch.id = pstat.match_id 
-     WHERE pstat.steam_id = ? AND pstat.winner = 1 
-     AND is_pug = ?`;
+   // Single query: aggregate all stats per steam_id (not per steam_id+name)
+   // This eliminates the name-collision loop and the N+1 wins query
+   let statsSql = `
+     SELECT
+       ps.steam_id,
+       MAX(ps.name) as name,
+       SUM(ps.kills) as kills,
+       SUM(ps.deaths) as deaths,
+       SUM(ps.assists) as assists,
+       SUM(ps.k1) as k1, SUM(ps.k2) as k2, SUM(ps.k3) as k3,
+       SUM(ps.k4) as k4, SUM(ps.k5) as k5,
+       SUM(ps.v1) as v1, SUM(ps.v2) as v2, SUM(ps.v3) as v3,
+       SUM(ps.v4) as v4, SUM(ps.v5) as v5,
+       SUM(ps.roundsplayed) as trp,
+       SUM(ps.flashbang_assists) as fba,
+       SUM(ps.damage) as dmg,
+       SUM(ps.headshot_kills) as hsk,
+       COUNT(ps.id) as totalMaps,
+       SUM(ps.friendlies_flashed) as fflash,
+       SUM(ps.enemies_flashed) as eflash,
+       SUM(ps.util_damage) as utildmg
+     FROM player_stats ps
+     JOIN \`match\` m ON m.id = ps.match_id
+     WHERE m.cancelled = 0
+       AND m.is_pug = ?
+   `;
+   const params: any[] = [pug];
+   if (seasonId) {
+     statsSql += " AND m.season_id = ?";
+     params.push(seasonId);
    }
-   let winSqlSeasons = `SELECT COUNT(*) AS wins FROM \`match\` mtch 
-     JOIN player_stats pstat ON mtch.id = pstat.match_id 
-     WHERE pstat.team_id = mtch.winner and pstat.steam_id = ?
-     AND mtch.season_id = ? AND is_pug = ?`;
-   let numWins;
-   if (!seasonId) playerStats = await db.query(playerStatSql);
-   else playerStats = await db.query(playerStatSqlSeasons, [seasonId]);
-   for (let player of playerStats) {
-     // Players can have multiple names. Avoid collision by combining everything, then performing averages.
-     if (!allPlayers.some((el) => el.steamId === player.steam_id)) {
-       if (!seasonId) numWins = await db.query(winSql, [player.steam_id, pug]);
-       else
-         numWins = await db.query(winSqlSeasons, [
-           player.steam_id,
-           seasonId,
-           pug,
-         ]);
-       allPlayers.push({
-         steamId: player.steam_id,
-         name:
-           player.name == null
-             ? await Utils.getSteamName(player.steam_id)
-             : player.name.replace('/"/g', '\\"'),
-         kills: parseFloat(player.kills),
-         deaths: parseFloat(player.deaths),
-         assists: parseFloat(player.assists),
-         k1: parseFloat(player.k1),
-         k2: parseFloat(player.k2),
-         k3: parseFloat(player.k3),
-         k4: parseFloat(player.k4),
-         k5: parseFloat(player.k5),
-         v1: parseFloat(player.v1),
-         v2: parseFloat(player.v2),
-         v3: parseFloat(player.v3),
-         v4: parseFloat(player.v4),
-         v5: parseFloat(player.v5),
-         trp: parseFloat(player.trp),
-         fba: parseFloat(player.fba),
-         total_damage: parseFloat(player.dmg),
-         hsk: parseFloat(player.hsk),
-         hsp:
-           parseFloat(player.kills) === 0
-             ? 0
-             : +(
-                 (parseFloat(player.hsk) / parseFloat(player.kills)) *
-                 100
-               ).toFixed(2),
-         average_rating: Utils.getRating(
-           parseFloat(player.kills),
-           parseFloat(player.trp),
-           parseFloat(player.deaths),
-           parseFloat(player.k1),
-           parseFloat(player.k2),
-           parseFloat(player.k3),
-           parseFloat(player.k4),
-           parseFloat(player.k5)
-         ),
-         wins: numWins[0].wins,
-         total_maps: player.totalMaps,
-         enemies_flashed: parseFloat(player.eflash),
-         friendlies_flashed: parseFloat(player.fflash),
-         util_damage: parseFloat(player.utildmg),
-       });
-     } else {
-       let collisionPlayer = allPlayers.find((user) => {
-         return user.steamId === player.steam_id;
-       });
-       // Update name, or concat name?
-       if (player.name == "")
-         collisionPlayer!.name = (collisionPlayer!.name + "/" + player.name)
-           .replace(/\/+$/, "")
-           .replace('/"/g', '\\"');
-       else
-         collisionPlayer!.name = player.name
-           .replace(/\/+$/, "")
-           .replace('/"/g', '\\"');
-       collisionPlayer!.kills += parseFloat(player.kills);
-       collisionPlayer!.deaths += parseFloat(player.deaths);
-       collisionPlayer!.assists += parseFloat(player.assists);
-       collisionPlayer!.k1 += parseFloat(player.k1);
-       collisionPlayer!.k2 += parseFloat(player.k2);
-       collisionPlayer!.k3 += parseFloat(player.k3);
-       collisionPlayer!.k4 += parseFloat(player.k4);
-       collisionPlayer!.k5 += parseFloat(player.k5);
-       collisionPlayer!.v1 += parseFloat(player.v1);
-       collisionPlayer!.v2 += parseFloat(player.v2);
-       collisionPlayer!.v3 += parseFloat(player.v3);
-       collisionPlayer!.v4 += parseFloat(player.v4);
-       collisionPlayer!.v5 += parseFloat(player.v5);
-       collisionPlayer!.trp += parseFloat(player.trp);
-       collisionPlayer!.fba += parseFloat(player.fba);
-       collisionPlayer!.hsk += parseFloat(player.hsk);
-       collisionPlayer!.total_damage += parseFloat(player.dmg);
-       collisionPlayer!.total_maps += parseFloat(player.totalMaps);
-       collisionPlayer!.hsp =
-         collisionPlayer!.kills === 0
-           ? 0
-           : +(
-               (collisionPlayer!.hsk /
-                 collisionPlayer!.kills) *
-               100
-             ).toFixed(2);
-       collisionPlayer!.average_rating = Utils.getRating(
-         collisionPlayer!.kills,
-         collisionPlayer!.trp,
-         collisionPlayer!.deaths,
-         collisionPlayer!.k1,
-         collisionPlayer!.k2,
-         collisionPlayer!.k3,
-         collisionPlayer!.k4,
-         collisionPlayer!.k5
-       );
-       collisionPlayer!.enemies_flashed! += parseFloat(player.eflash);
-       collisionPlayer!.friendlies_flashed! += parseFloat(player.fflash);
-       collisionPlayer!.util_damage! += parseFloat(player.utildmg);
-     }
+   statsSql += " GROUP BY ps.steam_id";
+
+   // Wins query: aggregate all wins in one query instead of per-player
+   let winsSql = pug
+     ? `SELECT pstat.steam_id, COUNT(*) AS wins
+        FROM \`match\` mtch
+        JOIN player_stats pstat ON mtch.id = pstat.match_id
+        WHERE pstat.winner = 1 AND mtch.is_pug = ? AND mtch.cancelled = 0
+        ${seasonId ? "AND mtch.season_id = ?" : ""}
+        GROUP BY pstat.steam_id`
+     : `SELECT pstat.steam_id, COUNT(*) AS wins
+        FROM \`match\` mtch
+        JOIN player_stats pstat ON mtch.id = pstat.match_id
+        WHERE pstat.team_id = mtch.winner AND mtch.is_pug = ? AND mtch.cancelled = 0
+        ${seasonId ? "AND mtch.season_id = ?" : ""}
+        GROUP BY pstat.steam_id`;
+
+   const winsParams: any[] = [pug];
+   if (seasonId) winsParams.push(seasonId);
+
+   // Execute both queries in parallel (2 queries total instead of N+1)
+   const [playerStats, winsRows] = await Promise.all([
+     db.query(statsSql, params),
+     db.query(winsSql, winsParams),
+   ]);
+
+   // Build wins lookup map
+   const winsMap = new Map<string, number>();
+   for (const row of winsRows) {
+     winsMap.set(row.steam_id, row.wins);
+   }
+
+   // Build player list
+   const allPlayers: Array<Player> = [];
+   for (const p of playerStats) {
+     const kills = parseFloat(p.kills) || 0;
+     const deaths = parseFloat(p.deaths) || 0;
+     const hsk = parseFloat(p.hsk) || 0;
+     const trp = parseFloat(p.trp) || 0;
+     const k1 = parseFloat(p.k1) || 0;
+     const k2 = parseFloat(p.k2) || 0;
+     const k3 = parseFloat(p.k3) || 0;
+     const k4 = parseFloat(p.k4) || 0;
+     const k5 = parseFloat(p.k5) || 0;
+
+     allPlayers.push({
+       steamId: p.steam_id,
+       name: p.name || p.steam_id,
+       kills,
+       deaths,
+       assists: parseFloat(p.assists) || 0,
+       k1, k2, k3, k4, k5,
+       v1: parseFloat(p.v1) || 0,
+       v2: parseFloat(p.v2) || 0,
+       v3: parseFloat(p.v3) || 0,
+       v4: parseFloat(p.v4) || 0,
+       v5: parseFloat(p.v5) || 0,
+       trp,
+       fba: parseFloat(p.fba) || 0,
+       total_damage: parseFloat(p.dmg) || 0,
+       hsk,
+       hsp: kills === 0 ? 0 : +((hsk / kills) * 100).toFixed(2),
+       average_rating: Utils.getRating(kills, trp, deaths, k1, k2, k3, k4, k5),
+       wins: winsMap.get(p.steam_id) || 0,
+       total_maps: p.totalMaps || 0,
+       enemies_flashed: parseFloat(p.eflash) || 0,
+       friendlies_flashed: parseFloat(p.fflash) || 0,
+       util_damage: parseFloat(p.utildmg) || 0,
+     });
    }
    return allPlayers;
  };
