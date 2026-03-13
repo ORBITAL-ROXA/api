@@ -37,7 +37,12 @@ import { router as v2BackupRouter } from "./src/routes/v2/backupapi.js";
 import highlightsRouter from "./src/routes/highlights.js";
 // End Route Files
 
+import { mkdirSync } from "fs";
 
+// Ensure public subdirectories exist (required when /app/public is a Railway volume)
+["public/demos", "public/backups", "public/highlights", "public/img/logos"].forEach((dir) => {
+  mkdirSync(dir, { recursive: true });
+});
 
 const app = express();
 
