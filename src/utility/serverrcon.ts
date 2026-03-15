@@ -359,7 +359,9 @@ class ServerRcon {
       if (process.env.NODE_ENV === "test") {
         return "Cannot restore backups on a test instance. Please use a development or production environment.";
       }
-      let loadMatchResponse = await this.execute(`get5_loadbackup ${backupName}`);
+      // Extract only the filename in case metadata is appended (e.g. from get5_listbackups)
+      const filename = backupName.split(/\s+/)[0];
+      let loadMatchResponse = await this.execute(`get5_loadbackup ${filename}`);
       return loadMatchResponse;
     } catch (err) {
       console.error("RCON error on restore backup: " + (err as Error).toString());
