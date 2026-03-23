@@ -105,7 +105,7 @@ router.post("/", async (req: Request, res: Response) => {
     return;
   }
   try {
-    const apiKey: string | undefined = req.get("Authorization");
+    const apiKey: string | undefined = req.get("Authorization") || req.get("user-api");
     const matchId: string | undefined = req.get("Get5-MatchId") || req.get("MatchZy-MatchId");
     const mapNumber: string | undefined = req.get("Get5-MapNumber") || req.get("MatchZy-MapNumber");
     const demoFilename: string | undefined = req.get("Get5-FileName") || req.get("MatchZy-FileName");
